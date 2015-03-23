@@ -434,7 +434,24 @@ class Solr(object):
         full_html = ''
         dom_tree = None
 
-        if server_type == 'tomcat':
+        if response.startswith('<?xml'):
+            # Try a strict XML parse
+            try:
+                soup = ET.fromstring(response)
+            except ET.ParseError:
+                # XML parsing error, so we'll let the more liberal code handle it.
+                pass
+            else:
+                reason_node = soup.find("lst[@name='error']/str[@name='msg']")
+                tb_node = soup.find("lst[@name='error']/str[@name='trace']")
+                if reason_node is not None:
+                    full_html = reason = reason_node.text
+                if tb_node is not None:
+                    full_html = tb_node.text
+                    if reason is None:
+                        reason = full_html
+
+        if reason is None and server_type == 'tomcat':
             # Tomcat doesn't produce a valid XML response
             soup = lxml.html.fromstring(response)
             body_node = soup.find('body')
@@ -456,7 +473,7 @@ class Solr(object):
             if reason is None:
                 from lxml.html.clean import clean_html
                 full_html = clean_html(response)
-        else:
+        elif reason is None:
             # Let's assume others do produce a valid XML response
             try:
                 dom_tree = ET.fromstring(response)
